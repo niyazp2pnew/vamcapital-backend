@@ -14,13 +14,13 @@ class Settings(BaseSettings):
     EMAILS_FROM_NAME: str = "VAM Capital Support"
 
     # JWT Authentication
-    SECRET_KEY: str = "supersecret_jwt_key_change_in_production"
+    SECRET_KEY: str = "6ac436e6ffaf42151316292df18d67a4d3f1a075343f97e862de834ec6ca21cf"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
 
     # PostgreSQL (Using explicit psycopg2 driver)
     DATABASE_URL: str = (
-        "postgresql+psycopg2://postgres:niyaz2004@localhost:5432/vam_capital_db"
+        "postgresql://neondb_owner:npg_naLfCcX4s9Ek@ep-bitter-mountain-b5wqzrv8-pooler.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require   "
     )
 
     # Expose SQLALCHEMY_DATABASE_URI for direct ORM access
