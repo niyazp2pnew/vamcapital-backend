@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
 
     # Resend Email Settings
-    RESEND_API_KEY: str = "re_DMXyvxKR_NxgZLujmr9FN6bpegYpfhSR5"
+    RESEND_API_KEY: str = "re_frYp1JRm_GyYeDRLnCjvcDBkHMowA3Y4w"
     EMAILS_FROM_EMAIL: str = "no-reply@vamcapital.in"
     EMAILS_FROM_NAME: str = "VAM Capital Support"
 
