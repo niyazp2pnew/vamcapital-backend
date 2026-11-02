@@ -17,6 +17,9 @@ from app.models.candidate_model import (
     JobApplication,
     ApplicationStatus,
 )
+from app.models.otp_model import (
+    OTPRecord
+)
 
 __all__ = [
     # Inquiries
@@ -34,4 +37,5 @@ __all__ = [
     "CandidateProfile",
     "JobApplication",
     "ApplicationStatus",
+    "OTPRecord",
 ]
