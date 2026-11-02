@@ -33,6 +33,7 @@ class Settings(BaseSettings):
         "http://localhost:3000",
         "https://vamcapital.in",
         "https://www.vamcapital.in",
+        "https://vamcapital.vercel.app",
     ]
 
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")
