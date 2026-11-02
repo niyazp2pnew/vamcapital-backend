@@ -373,3 +373,61 @@ def update_application_stage(
         )
 
     return app_record
+
+@router.get("/admin/applications", response_model=List[CandidateDossierResponse])
+def list_all_applications_admin(
+    status_filter: Optional[ApplicationStatus] = Query(None, description="Filter by stage"),
+    job_id: Optional[str] = Query(None, description="Filter by specific job"),
+    current_user: User = Depends(require_recruiter_or_admin),
+    db: Session = Depends(get_db),
+):
+    """
+    Admin/Recruiter: Master desk to monitor and triage all candidate applications.
+    """
+    query = db.query(JobApplication)
+    if status_filter:
+        query = query.filter(JobApplication.status == status_filter)
+    if job_id:
+        query = query.filter(JobApplication.job_id == job_id)
+
+    applications = query.order_by(JobApplication.created_at.desc()).all()
+    dossiers = []
+
+    for app_item in applications:
+        job = app_item.job
+        candidate = app_item.candidate
+        user_record = candidate.user if candidate else None
+        
+        dossiers.append(
+            CandidateDossierResponse(
+                application_id=app_item.id,
+                job_id=job.id if job else "",
+                job_title=job.title if job else "Archived Role",
+                status=app_item.status,
+                rating=app_item.rating,
+                recruiter_notes=app_item.recruiter_notes,
+                applied_at=app_item.created_at,
+                stage_history=app_item.stage_history or [],
+                candidate_id=candidate.id if candidate else "",
+                full_name=candidate.full_name if candidate else "Unknown",
+                headline=getattr(candidate, "headline", None),
+                about=getattr(candidate, "about", None),
+                email=user_record.email if user_record else "",
+                phone=candidate.phone if candidate else "",
+                current_location=candidate.current_location if candidate else "",
+                current_title=getattr(candidate, "current_title", None),
+                total_exp_months=candidate.total_exp_months if candidate else 0,
+                current_ctc=candidate.current_ctc if candidate else None,
+                expected_ctc=candidate.expected_ctc if candidate else None,
+                notice_period_days=candidate.notice_period_days if candidate else 30,
+                skills=candidate.skills if candidate else [],
+                resume_url=candidate.resume_url if candidate else None,
+                linkedin_url=candidate.linkedin_url if candidate else None,
+                portfolio_url=getattr(candidate, "portfolio_url", None),
+                experience_history=getattr(candidate, "experience_history", []) or [],
+                education_history=getattr(candidate, "education_history", []) or [],
+                certifications=getattr(candidate, "certifications", []) or [],
+            )
+        )
+
+    return dossiers
