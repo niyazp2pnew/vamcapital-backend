@@ -76,7 +76,7 @@ allowed_origins = [
     "http://127.0.0.1:3000",
     "https://vamcapital.in",
     "https://www.vamcapital.in",
-    "https://vam-capital-web.vercel.app",
+    "https://vamcapital.vercel.app",
 ]
 
 # Incorporate any custom origins defined in configuration/environment
