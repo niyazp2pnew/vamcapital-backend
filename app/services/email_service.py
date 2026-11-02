@@ -146,7 +146,7 @@ def send_html_email(to_email: str, subject: str, html_content: str):
         return
 
     try:
-        from_email = getattr(settings, "EMAILS_FROM_EMAIL", None) or "onboarding@resend.dev"
+        from_email = getattr(settings, "EMAILS_FROM_EMAIL", None) or "no-reply@vamcapital.in"
         from_name = getattr(settings, "EMAILS_FROM_NAME", None) or "VAM Capital Support"
 
         resend.Emails.send({
