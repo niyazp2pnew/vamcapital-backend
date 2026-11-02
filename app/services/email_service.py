@@ -8,6 +8,7 @@ from fastapi import HTTPException, status
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.otp_model import OTPRecord
+import os 
 
 logger = logging.getLogger(__name__)
 
@@ -157,24 +158,31 @@ async def verify_otp_token(email: str, purpose: str, candidate_otp: str) -> bool
 # --------------------------------------------------------------------------
 
 def send_html_email(to_email: str, subject: str, html_content: str):
-    """Dispatches HTML emails via Resend."""
-    api_key = settings.RESEND_API_KEY.strip() if settings.RESEND_API_KEY else ""
+    """Safely dispatches HTML emails via Resend."""
+    # 1. Retrieve and clean the key from settings or OS environment
+    raw_key = getattr(settings, "RESEND_API_KEY", None) or os.getenv("RESEND_API_KEY", "")
+    api_key = str(raw_key).strip().strip('"').strip("'")
+
     if not api_key:
-        logger.warning(f"[send_html_email] RESEND_API_KEY is not set. Email '{subject}' skipped.")
+        logger.warning(f"[send_html_email] RESEND_API_KEY is missing. Email '{subject}' skipped.")
         return
 
+    # Diagnostic log: prints first 6 chars and total length so you can verify in Render logs
+    logger.info(f"[send_html_email] Initializing Resend with key prefix '{api_key[:6]}...' (length: {len(api_key)})")
+
+    # Set key dynamically
     resend.api_key = api_key
 
-    from_email = (settings.EMAILS_FROM_EMAIL or "onboarding@resend.dev").strip()
-    from_name = (settings.EMAILS_FROM_NAME or "VAM Capital Support").strip()
+    from_email = (getattr(settings, "EMAILS_FROM_EMAIL", None) or os.getenv("EMAILS_FROM_EMAIL") or "onboarding@resend.dev").strip()
+    from_name = (getattr(settings, "EMAILS_FROM_NAME", None) or os.getenv("EMAILS_FROM_NAME") or "VAM Capital Support").strip()
 
     try:
-        resend.Emails.send({
+        response = resend.Emails.send({
             "from": f"{from_name} <{from_email}>",
             "to": [to_email.strip()],
             "subject": subject,
             "html": html_content,
         })
-        logger.info(f"[send_html_email] Email successfully dispatched to {to_email}")
+        logger.info(f"[send_html_email] Success! Dispatched to {to_email}. ID: {response.get('id')}")
     except Exception as e:
         logger.error(f"[send_html_email] Failed sending email to {to_email}: {e}")
