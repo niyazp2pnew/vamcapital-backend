@@ -1,3 +1,4 @@
+# app/api/v1/endpoints/candidates.py
 from datetime import datetime
 from typing import List, Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
@@ -6,7 +7,7 @@ from app.core.database import get_db
 from app.core.dependencies import get_current_user, require_recruiter_or_admin
 from app.models.candidate_model import ApplicationStatus, CandidateProfile, JobApplication
 from app.models.job_model import Job
-from app.models.user_model import User
+from app.models.user_model import Company, User
 from app.schemas.candidate_schema import (
     ApplicationCreate,
     ApplicationResponse,
@@ -34,10 +35,35 @@ def get_my_candidate_profile(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Candidate: View own profile details including resume link and LinkedIn URL."""
-    profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == current_user.id).first()
+    """
+    Candidate: View own profile details.
+    Auto-creates a default profile record if one does not exist yet.
+    """
+    profile = (
+        db.query(CandidateProfile)
+        .filter(CandidateProfile.user_id == current_user.id)
+        .first()
+    )
     if not profile:
-        raise HTTPException(status_code=404, detail="Candidate profile not found")
+        profile = CandidateProfile(
+            user_id=current_user.id,
+            full_name=current_user.email.split("@")[0].capitalize(),
+            headline="",
+            about="",
+            phone=f"+91{current_user.id[:10]}",
+            current_location="Delhi NCR",
+            preferred_locations=["Noida", "Gurugram", "Delhi NCR"],
+            total_exp_months=0,
+            notice_period_days=30,
+            skills=[],
+            experience_history=[],
+            education_history=[],
+            certifications=[],
+        )
+        db.add(profile)
+        db.commit()
+        db.refresh(profile)
+
     return profile
 
 
@@ -47,14 +73,20 @@ def create_or_upsert_profile(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Candidate: Upsert profile details (experience, CTC, skills, resume link, LinkedIn URL)."""
-    profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == current_user.id).first()
+    """Candidate: Upsert complete career credentials, bio, work history, and education."""
+    profile = (
+        db.query(CandidateProfile)
+        .filter(CandidateProfile.user_id == current_user.id)
+        .first()
+    )
+    payload_data = payload.model_dump(exclude_unset=True)
+
     if profile:
-        for field, value in payload.model_dump(exclude_unset=True).items():
+        for field, value in payload_data.items():
             setattr(profile, field, value)
         profile.updated_at = datetime.utcnow()
     else:
-        profile = CandidateProfile(user_id=current_user.id, **payload.model_dump())
+        profile = CandidateProfile(user_id=current_user.id, **payload_data)
         db.add(profile)
 
     db.commit()
@@ -68,17 +100,44 @@ def update_my_candidate_profile(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Candidate: Partially edit profile details."""
-    profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == current_user.id).first()
+    """Candidate: Partially edit headline, bio, experience history, skills, or links."""
+    profile = (
+        db.query(CandidateProfile)
+        .filter(CandidateProfile.user_id == current_user.id)
+        .first()
+    )
     if not profile:
-        raise HTTPException(status_code=404, detail="Candidate profile not found")
+        profile = CandidateProfile(
+            user_id=current_user.id,
+            full_name=current_user.email.split("@")[0].capitalize(),
+            headline="",
+            about="",
+            phone=f"+91{current_user.id[:10]}",
+            current_location="Delhi NCR",
+            experience_history=[],
+            education_history=[],
+            certifications=[],
+        )
+        db.add(profile)
+        db.commit()
+        db.refresh(profile)
 
     update_data = payload.model_dump(exclude_unset=True)
 
     if "phone" in update_data and update_data["phone"] != profile.phone:
-        existing_phone = db.query(CandidateProfile).filter(CandidateProfile.phone == update_data["phone"]).first()
+        existing_phone = (
+            db.query(CandidateProfile)
+            .filter(
+                CandidateProfile.phone == update_data["phone"],
+                CandidateProfile.id != profile.id,
+            )
+            .first()
+        )
         if existing_phone:
-            raise HTTPException(status_code=400, detail="Phone number is already associated with another profile")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Phone number is already associated with another profile.",
+            )
 
     for field, value in update_data.items():
         setattr(profile, field, value)
@@ -94,8 +153,12 @@ def delete_my_candidate_account(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Candidate: Permanently deletes the logged-in candidate account and associated records."""
-    profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == current_user.id).first()
+    """Candidate: Permanently deletes the logged-in candidate account and associated dossiers."""
+    profile = (
+        db.query(CandidateProfile)
+        .filter(CandidateProfile.user_id == current_user.id)
+        .first()
+    )
     if profile:
         db.query(JobApplication).filter(JobApplication.candidate_id == profile.id).delete()
         db.delete(profile)
@@ -116,25 +179,29 @@ def apply_to_job(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    Candidate: 1-click application submission using existing profile.
-    Automatically fires an application receipt confirmation email via Resend.
-    """
-    profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == current_user.id).first()
+    """Candidate: 1-click application submission using complete profile dossier."""
+    profile = (
+        db.query(CandidateProfile)
+        .filter(CandidateProfile.user_id == current_user.id)
+        .first()
+    )
     if not profile:
-        raise HTTPException(status_code=400, detail="Please complete your profile before applying")
+        raise HTTPException(status_code=400, detail="Please complete your profile before applying.")
 
     job = db.query(Job).filter(Job.id == payload.job_id).first()
     if not job:
-        raise HTTPException(status_code=404, detail="Job does not exist")
+        raise HTTPException(status_code=404, detail="Job requisition not found.")
 
     existing_app = (
         db.query(JobApplication)
-        .filter(JobApplication.job_id == payload.job_id, JobApplication.candidate_id == profile.id)
+        .filter(
+            JobApplication.job_id == payload.job_id,
+            JobApplication.candidate_id == profile.id,
+        )
         .first()
     )
     if existing_app:
-        raise HTTPException(status_code=400, detail="You have already applied to this role")
+        raise HTTPException(status_code=400, detail="You have already applied to this role.")
 
     initial_stage = [{"stage": ApplicationStatus.APPLIED.value, "timestamp": datetime.utcnow().isoformat()}]
 
@@ -148,7 +215,7 @@ def apply_to_job(
     db.commit()
     db.refresh(application)
 
-    # Dispatch email confirmation to candidate
+    # Dispatch confirmation email via Resend
     company_name = job.company.name if job.company else "VAM Capital Client"
     receipt_html = get_application_receipt_template(
         candidate_name=profile.full_name,
@@ -170,11 +237,20 @@ def get_my_applications(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Candidate: View track status of all submitted applications."""
-    profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == current_user.id).first()
+    """Candidate: View tracking and status of all submitted applications."""
+    profile = (
+        db.query(CandidateProfile)
+        .filter(CandidateProfile.user_id == current_user.id)
+        .first()
+    )
     if not profile:
         return []
-    return db.query(JobApplication).filter(JobApplication.candidate_id == profile.id).all()
+    return (
+        db.query(JobApplication)
+        .filter(JobApplication.candidate_id == profile.id)
+        .order_by(JobApplication.created_at.desc())
+        .all()
+    )
 
 
 # --------------------------------------------------------------------------
@@ -190,8 +266,7 @@ def list_job_applicants(
 ):
     """
     Recruiter ATS: Review all applicant dossiers for a job posting.
-    Returns complete candidate information (resume_url, linkedin_url, CTC, notice period)
-    with optional stage filtering.
+    Returns complete candidate information (headline, about, work history, education, CTC, resume link).
     """
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job:
@@ -219,17 +294,23 @@ def list_job_applicants(
                 stage_history=app_item.stage_history or [],
                 candidate_id=candidate.id if candidate else "",
                 full_name=candidate.full_name if candidate else "Unknown",
+                headline=candidate.headline if candidate else None,
+                about=candidate.about if candidate else None,
                 email=user_record.email if user_record else "",
                 phone=candidate.phone if candidate else "",
                 current_location=candidate.current_location if candidate else "",
-                current_title=candidate.current_title,
+                current_title=candidate.current_title if candidate else None,
                 total_exp_months=candidate.total_exp_months if candidate else 0,
-                current_ctc=candidate.current_ctc,
-                expected_ctc=candidate.expected_ctc,
+                current_ctc=candidate.current_ctc if candidate else None,
+                expected_ctc=candidate.expected_ctc if candidate else None,
                 notice_period_days=candidate.notice_period_days if candidate else 30,
                 skills=candidate.skills if candidate else [],
-                resume_url=candidate.resume_url,
-                linkedin_url=candidate.linkedin_url,
+                resume_url=candidate.resume_url if candidate else None,
+                linkedin_url=candidate.linkedin_url if candidate else None,
+                portfolio_url=candidate.portfolio_url if candidate else None,
+                experience_history=candidate.experience_history or [] if candidate else [],
+                education_history=candidate.education_history or [] if candidate else [],
+                certifications=candidate.certifications or [] if candidate else [],
             )
         )
 
@@ -245,9 +326,8 @@ def update_application_stage(
     db: Session = Depends(get_db),
 ):
     """
-    Recruiter ATS: Advance applicant through hiring stages
+    Recruiter ATS: Move applicant through hiring stages
     (APPLIED -> SCREENING -> SHORTLISTED -> INTERVIEW_SCHEDULED -> HIRED / REJECTED).
-    Dispatches automated status update email to the candidate via Resend.
     """
     app_record = db.query(JobApplication).filter(JobApplication.id == application_id).first()
     if not app_record:
